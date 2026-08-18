@@ -1,0 +1,28 @@
+# Model weights — distributed via GitHub Releases, not git
+*.pth
+*.pt
+*.ckpt
+*.bin
+*.safetensors
+
+# Datasets
+dataset/
+data/
+images/
+questions/
+*.zip
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+*.egg-info/
+.ipynb_checkpoints/
+
+# Tooling / OS
+.streamlit/secrets.toml
+.DS_Store
+.idea/
+.vscode/
