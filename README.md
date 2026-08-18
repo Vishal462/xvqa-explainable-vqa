@@ -2,10 +2,9 @@
 
 Answering free-form questions about images, and showing *where in the image* the answer came from.
 
-X-VQA fuses a **Swin Transformer** visual encoder with an **ELECTRA** text encoder through a **6-layer bidirectional cross-attention network (MCAN)**, and attaches **Score-CAM** to the final Swin block so every prediction ships with a spatial attribution map. It is evaluated on **GQA-OOD** to quantify how much of its accuracy is genuine visual reasoning versus language-prior guessing.
+X-VQA fuses a **Swin Transformer** visual encoder with an **ELECTRA** text encoder through a **6-layer bidirectional cross-attention network (MCAN)**, and attaches **Score-CAM** to the final Swin block so every prediction generated along with a spatial Score-CAM attribution map. It is evaluated on **GQA-OOD** to quantify how much of its accuracy is genuine visual reasoning versus language-prior guessing.
 
-<!-- Replace with your deployed URL once the Space is live -->
-**Live Demo:** [Click Here](https://visual-question-answering-explainable.streamlit.app/)
+[![Live Demo](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://visual-question-answering-explainable.streamlit.app/)
 
 ![X-VQA dashboard](assets/demo_dashboard.jpg)
 
@@ -59,7 +58,7 @@ Two-phase training: the fusion layers stabilize against frozen encoders for 3 ep
   <img src="assets/fig6-2_head_vs_tail.png" width="55%" alt="Head vs Tail accuracy">
 </p>
 
-The 19.59 pp gap is the honest finding: X-VQA has learned real statistical associations, as every model trained on a finite corpus does. But Tail accuracy of 39.76% on a **1,833-way** classification problem where chance is ~0.05%, this means the model is genuinely reasoning over visual evidence on a large fraction of rare concept pairings, not defaulting to frequency priors.
+The 19.59 pp gap is the honest finding: X-VQA has learned real statistical associations, as every model trained on a finite corpus does. But Tail accuracy of 39.76% on a 1,833-way classification problem (where chance is ~0.05%) indicates that the model retains substantial performance on rare concept pairings where language priors are less reliable.
 
 ### Visual grounding
 
@@ -68,7 +67,8 @@ The 19.59 pp gap is the honest finding: X-VQA has learned real statistical assoc
   <img src="assets/fig6-3b_scorecam.jpg" width="42%" alt="Score-CAM heatmap">
 </p>
 
-*"Is there a red chair in the room?"* → **no**. A language-biased model that had learned to associate "red chair" questions with "yes" would answer incorrectly here. The correct answer requires actually looking and finding neither a room nor a chair. The heatmap shows attention concentrated on the zebra and surrounding grass, which is the evidence that produced the "no".
+*"Is there a red chair in the room?"* → **no**. A language-biased model that had learned to associate "red chair" questions with "yes" would answer incorrectly here. The correct answer requires actually looking and finding neither a room nor a chair. The Score-CAM heatmap highlights the zebra and surrounding grass,
+showing the regions that contributed most strongly to the model's prediction.
 
 ### Against published baselines
 
@@ -145,15 +145,16 @@ git clone https://github.com/Vishal462/xvqa-explainable-vqa.git
 cd xvqa-explainable-vqa
 
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+# Python 3.12 recommended
 pip install -r requirements.txt
 
-python download_weights.py     # fetches best_model.pth (~1.1 GB) from Releases
+python download_weights.py     # fetches best_model.pth (944 MB) from Releases
 streamlit run app.py
 ```
 
 Opens at `http://localhost:8501`. Upload an image, type a question, get an answer with confidence and a Score-CAM heatmap.
 
-> **On CPU:** inference takes a few seconds, but Score-CAM needs 64 forward passes through a 276M-parameter model and takes 1–3 minutes. The sidebar toggle lets you skip it.
+> **On CPU:** inference takes a few seconds, but Score-CAM needs 64 forward passes through a 276M-parameter model and takes 1–3 minutes.
 
 ### Reproducing training
 
