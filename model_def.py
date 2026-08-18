@@ -57,10 +57,14 @@ class MCAN(nn.Module):
 
 
 class XVQAModel(nn.Module):
-    def __init__(self, num_answers, hidden_dim=512):
+    def __init__(self, num_answers, hidden_dim=512, pretrained=True):
         super().__init__()
-        self.vision_encoder = SwinModel.from_pretrained("microsoft/swin-base-patch4-window7-224")
-        self.text_encoder = ElectraModel.from_pretrained("google/electra-base-discriminator")
+        if pretrained:
+            self.vision_encoder = SwinModel.from_pretrained("microsoft/swin-base-patch4-window7-224")
+            self.text_encoder = ElectraModel.from_pretrained("google/electra-base-discriminator")
+        else:
+            self.vision_encoder = SwinModel(SwinConfig.from_pretrained("microsoft/swin-base-patch4-window7-224"))
+            self.text_encoder = ElectraModel(ElectraConfig.from_pretrained("google/electra-base-discriminator"))
         self.vision_proj = nn.Linear(self.vision_encoder.config.hidden_size, hidden_dim)
         self.text_proj = nn.Linear(self.text_encoder.config.hidden_size, hidden_dim)
         self.mcan = MCAN(hidden_dim=hidden_dim, num_heads=8, num_layers=6)

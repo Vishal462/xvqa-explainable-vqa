@@ -1,9 +1,9 @@
-pip==26.2.1
+--extra-index-url https://download.pytorch.org/whl/cpu
 streamlit==1.37.0
-torch==2.12.1
-torchvision==0.17.1
+torch==2.4.1
+torchvision==0.19.1
 transformers==4.42.4
-pytorch-grad-cam==1.5.5
+grad-cam==1.5.5
 opencv-python-headless==4.10.0.84
 Pillow==10.4.0
 numpy==1.26.4
