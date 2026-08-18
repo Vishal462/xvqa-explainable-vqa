@@ -1,8 +1,14 @@
+# CPU-only PyTorch wheels. Without this line pip pulls the CUDA build
+# (~2.5 GB of NVIDIA libs) which is useless on Streamlit Cloud and blows
+# up build time. The CPU wheel is ~200 MB.
+--extra-index-url https://download.pytorch.org/whl/cpu
+
 streamlit>=1.31
-torch>=2.1
-torchvision>=0.16
-transformers>=4.38
+torch==2.4.1
+torchvision==0.19.1
+transformers>=4.38,<5
 grad-cam==1.5.5
 opencv-python-headless>=4.8
 Pillow>=10.0
-numpy>=1.24
+numpy>=1.24,<2
+matplotlib>=3.7

@@ -1,192 +1,116 @@
-"""
-X-VQA — Explainable Visual Question Answering
-Streamlit inference dashboard.
 
-Swin-Base (vision) + ELECTRA-Base (language) + 6-layer MCAN fusion,
-with Score-CAM visual grounding over the final Swin block.
-
-Run locally:  streamlit run app.py
-"""
-
-import io
-import json
-import os
-import time
-
-import numpy as np
 import streamlit as st
 import torch
+import json
+import numpy as np
 from PIL import Image
 from transformers import AutoImageProcessor, AutoTokenizer
+from pytorch_grad_cam import ScoreCAM
+from pytorch_grad_cam.utils.image import show_cam_on_image
+import matplotlib.pyplot as plt
+import io
+import os
+import gc
 
+# ---- Import your model classes from model_def.py ----
 from model_def import XVQAModel, XVQACamWrapper, swin_reshape_transform
 
-# --------------------------------------------------------------------------
-# Config
-# --------------------------------------------------------------------------
+# ---- CONFIG ----
 VOCAB_PATH = "answer_to_id.json"
-CHECKPOINT_PATH = os.environ.get("XVQA_CHECKPOINT", "best_model.pth")
-VISION_BACKBONE = "microsoft/swin-base-patch4-window7-224"
-TEXT_BACKBONE = "google/electra-base-discriminator"
-MAX_QUESTION_LEN = 40
-
+CHECKPOINT_PATH = "best_model.pth"
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-ON_GPU = DEVICE.type == "cuda"
 
-st.set_page_config(page_title="X-VQA", layout="wide", page_icon="🔍")
+# Score-CAM masks the image and runs the batch through the model. The library
+# default (64) allocates more activation memory than Streamlit Cloud's 2.7 GB
+# allows for a 236M-parameter model. Smaller batch = same result, less peak RAM.
+CAM_BATCH_SIZE = 4 if DEVICE.type == "cpu" else 32
 
 
-# --------------------------------------------------------------------------
-# Resource loading
-# --------------------------------------------------------------------------
-def _ensure_checkpoint() -> bool:
-    """Fetch weights on first run if they aren't next to the app."""
+# ---- FETCH WEIGHTS (checkpoint is a GitHub Release asset, not tracked in git) ----
+def ensure_checkpoint():
     if os.path.exists(CHECKPOINT_PATH):
-        return True
-    try:
-        from download_weights import download
-
-        with st.spinner("First run — downloading model weights (~1.1 GB)…"):
-            download(CHECKPOINT_PATH)
-        return os.path.exists(CHECKPOINT_PATH)
-    except Exception as exc:  # noqa: BLE001
-        st.error(
-            f"Could not obtain `{CHECKPOINT_PATH}` automatically ({exc}).\n\n"
-            "Download it manually from the GitHub Releases page of this repo "
-            "and place it in the project root."
-        )
-        return False
+        return
+    from download_weights import download
+    with st.spinner("First run — downloading model weights (944 MB)…"):
+        download(CHECKPOINT_PATH)
 
 
-@st.cache_resource(show_spinner="Loading model…")
+# ---- LOAD RESOURCES (cached so they load once) ----
+@st.cache_resource
 def load_resources():
-    with open(VOCAB_PATH, "r") as f:
+    with open(VOCAB_PATH, 'r') as f:
         answer_to_id = json.load(f)
+    num_answers = len(answer_to_id)
     id_to_answer = {v: k for k, v in answer_to_id.items()}
 
-    model = XVQAModel(num_answers=len(answer_to_id)).to(DEVICE)
-    state = torch.load(CHECKPOINT_PATH, map_location=DEVICE)
-    # tolerate checkpoints saved as {"model_state_dict": ...}
+    # pretrained=False builds the encoders from their configs instead of
+    # downloading ~800 MB of ImageNet/ELECTRA weights that best_model.pth
+    # immediately overwrites. Identical architecture, identical results.
+    model = XVQAModel(num_answers=num_answers, pretrained=False).to(DEVICE)
+    state = torch.load(CHECKPOINT_PATH, map_location=DEVICE, mmap=True)
     if isinstance(state, dict) and "model_state_dict" in state:
         state = state["model_state_dict"]
     model.load_state_dict(state)
+    del state
+    gc.collect()
     model.eval()
 
-    image_processor = AutoImageProcessor.from_pretrained(VISION_BACKBONE)
-    tokenizer = AutoTokenizer.from_pretrained(TEXT_BACKBONE)
+    image_processor = AutoImageProcessor.from_pretrained("microsoft/swin-base-patch4-window7-224")
+    tokenizer = AutoTokenizer.from_pretrained("google/electra-base-discriminator")
+
     return model, image_processor, tokenizer, answer_to_id, id_to_answer
 
-
-# --------------------------------------------------------------------------
-# Inference
-# --------------------------------------------------------------------------
-def predict(model, image, question, image_processor, tokenizer, id_to_answer, top_k=5):
+# ---- INFERENCE ----
+def predict_and_explain(model, image, question, image_processor, tokenizer, answer_to_id, id_to_answer):
     pixel_values = image_processor(images=image, return_tensors="pt").pixel_values.to(DEVICE)
-    text_inputs = tokenizer(
-        question,
-        padding="max_length",
-        truncation=True,
-        max_length=MAX_QUESTION_LEN,
-        return_tensors="pt",
-    )
-    input_ids = text_inputs["input_ids"].to(DEVICE)
-    attention_mask = text_inputs["attention_mask"].to(DEVICE)
+    text_inputs = tokenizer(question, padding='max_length', truncation=True, max_length=40, return_tensors="pt")
+    input_ids = text_inputs['input_ids'].to(DEVICE)
+    attention_mask = text_inputs['attention_mask'].to(DEVICE)
 
     with torch.no_grad():
         logits = model(pixel_values, input_ids, attention_mask)
-        probs = torch.softmax(logits, dim=-1)[0]
+        pred_id = logits.argmax(dim=-1).item()
+        confidence = torch.softmax(logits, dim=-1)[0][pred_id].item()
 
-    k = min(top_k, probs.shape[0])
-    top_probs, top_ids = probs.topk(k)
-    predictions = [
-        (id_to_answer.get(int(i), "unknown"), float(p))
-        for p, i in zip(top_probs, top_ids)
-    ]
-    return predictions, pixel_values, input_ids, attention_mask
+    predicted_answer = id_to_answer.get(pred_id, "Unknown")
 
-
-def explain(model, image, pixel_values, input_ids, attention_mask):
-    """Score-CAM heatmap over the final Swin transformer block."""
-    from pytorch_grad_cam import ScoreCAM
-    from pytorch_grad_cam.utils.image import show_cam_on_image
-
+    # Score-CAM heatmap
     target_layers = [model.vision_encoder.encoder.layers[-1].blocks[-1].layernorm_before]
     cam_model = XVQACamWrapper(model, input_ids, attention_mask)
-    cam = ScoreCAM(
-        model=cam_model,
-        target_layers=target_layers,
-        reshape_transform=swin_reshape_transform,
-    )
+    cam = ScoreCAM(model=cam_model, target_layers=target_layers, reshape_transform=swin_reshape_transform)
+    cam.batch_size = CAM_BATCH_SIZE
 
     pixel_values = pixel_values.detach().requires_grad_(True)
-    if ON_GPU:
-        # Score-CAM's score weighting is numerically unstable in fp16.
-        with torch.amp.autocast("cuda", enabled=False):
+    if DEVICE.type == "cuda":
+        with torch.amp.autocast('cuda', enabled=False):
             grayscale_cam = cam(input_tensor=pixel_values, targets=None)[0]
     else:
         grayscale_cam = cam(input_tensor=pixel_values, targets=None)[0]
 
     rgb_img = np.float32(image.resize((224, 224))) / 255.0
-    return show_cam_on_image(rgb_img, grayscale_cam, use_rgb=True)
+    heatmap = show_cam_on_image(rgb_img, grayscale_cam, use_rgb=True)
 
+    return predicted_answer, confidence, heatmap
 
-# --------------------------------------------------------------------------
-# UI
-# --------------------------------------------------------------------------
+# ---- UI ----
+st.set_page_config(page_title="X-VQA", layout="wide", page_icon="🔍")
 st.title("X-VQA: Explainable Visual Question Answering")
-st.caption(
-    "Swin Transformer + ELECTRA + 6-layer MCAN, with Score-CAM visual grounding. "
-    "Trained on GQA (balanced) — 1,833-way answer classification."
-)
+st.caption("Swin Transformer + ELECTRA + MCAN with Score-CAM visual grounding")
 
-with st.sidebar:
-    st.header("About")
-    st.markdown(
-        """
-**Architecture**
-- Vision: `swin-base-patch4-window7-224` → 49×1024
-- Language: `electra-base-discriminator` → 40×768
-- Fusion: 6-layer bidirectional cross-attention (MCAN)
-- Head: MLP → 1,833 answer classes
-- ~276M parameters
-
-**Results**
-- GQA val accuracy: **55.32%**
-- GQA-OOD Head: **59.35%**
-- GQA-OOD Tail: **39.76%**
-- Head–Tail gap: **19.59 pp**
-        """
-    )
-    st.divider()
-    st.caption(f"Running on **{DEVICE.type.upper()}**")
-    show_cam = st.toggle(
-        "Generate Score-CAM heatmap",
-        value=ON_GPU,
-        help="Score-CAM runs 64 masked forward passes. Fast on GPU, slow (~1–3 min) on CPU.",
-    )
-    top_k = st.slider("Show top-K answers", 1, 10, 5)
-
-if not _ensure_checkpoint():
-    st.stop()
-
+ensure_checkpoint()
 model, image_processor, tokenizer, answer_to_id, id_to_answer = load_resources()
 
-col_in, col_out = st.columns(2)
+col1, col2 = st.columns([1, 1])
 
-with col_in:
+with col1:
     st.subheader("Input")
     uploaded_file = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png"])
-    question = st.text_input(
-        "Ask a question about the image",
-        placeholder="e.g. What color is the chair on the left?",
-    )
-    run_btn = st.button("Get Answer", use_container_width=True, type="primary")
-    if uploaded_file is not None:
-        st.image(uploaded_file, caption="Input image", use_container_width=True)
+    question = st.text_input("Ask a question about the image", placeholder="e.g. Is there a red chair in the room?")
+    run_btn = st.button("Get Answer", use_container_width=True)
 
-with col_out:
+with col2:
     st.subheader("Output")
-    out = st.container()
+    output_placeholder = st.empty()
 
 if run_btn:
     if uploaded_file is None:
@@ -196,41 +120,19 @@ if run_btn:
     else:
         image = Image.open(io.BytesIO(uploaded_file.getvalue())).convert("RGB")
 
-        with st.spinner("Running inference…"):
-            t0 = time.time()
-            predictions, pixel_values, input_ids, attention_mask = predict(
-                model, image, question, image_processor, tokenizer, id_to_answer, top_k
-            )
-            latency = time.time() - t0
-
-        answer, confidence = predictions[0]
-
-        with out:
-            st.success(f"### {answer}")
-            c1, c2 = st.columns(2)
-            c1.metric("Confidence", f"{confidence * 100:.1f}%")
-            c2.metric("Latency", f"{latency:.2f}s")
-
-            st.markdown("**Top predictions**")
-            st.dataframe(
-                {
-                    "answer": [a for a, _ in predictions],
-                    "probability": [f"{p * 100:.2f}%" for _, p in predictions],
-                },
-                hide_index=True,
-                use_container_width=True,
+        with st.spinner("Running inference and generating heatmap..."):
+            answer, confidence, heatmap = predict_and_explain(
+                model, image, question,
+                image_processor, tokenizer,
+                answer_to_id, id_to_answer
             )
 
-            if show_cam:
-                with st.spinner("Computing Score-CAM (64 masked forward passes)…"):
-                    try:
-                        heatmap = explain(model, image, pixel_values, input_ids, attention_mask)
-                        st.image(
-                            heatmap,
-                            caption="Score-CAM — warmer regions drove the prediction",
-                            use_container_width=True,
-                        )
-                    except Exception as exc:  # noqa: BLE001
-                        st.warning(f"Heatmap generation failed: {exc}")
-            else:
-                st.info("Score-CAM disabled — enable it in the sidebar to see visual grounding.")
+        with col2:
+            st.success(f"**Answer: {answer}**")
+            st.metric("Confidence", f"{confidence * 100:.1f}%")
+
+            tab1, tab2 = st.tabs(["Original Image", "Score-CAM Heatmap"])
+            with tab1:
+                st.image(image, width=400)
+            with tab2:
+                st.image(heatmap, caption="Regions the model focused on", width=400)
