@@ -1,10 +1,6 @@
 """
 Fetch the trained X-VQA checkpoint.
-
-The checkpoint (~1.1 GB) is not tracked in git. It is published as a
-GitHub Release asset. Run this once before starting the app:
-
-    python download_weights.py
+python download_weights.py
 """
 
 import os
