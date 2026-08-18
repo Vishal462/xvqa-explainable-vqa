@@ -5,10 +5,9 @@ Answering free-form questions about images, and showing *where in the image* the
 X-VQA fuses a **Swin Transformer** visual encoder with an **ELECTRA** text encoder through a **6-layer bidirectional cross-attention network (MCAN)**, and attaches **Score-CAM** to the final Swin block so every prediction ships with a spatial attribution map. It is evaluated on **GQA-OOD** to quantify how much of its accuracy is genuine visual reasoning versus language-prior guessing.
 
 <!-- Replace with your deployed URL once the Space is live -->
-[![Open in Spaces](https://img.shields.io/badge/demo-Hugging%20Face%20Spaces-blue)](https://huggingface.co/spaces/YOUR_USERNAME/xvqa)
+[![Open in Spaces](https://img.shields.io/badge/demo-Hugging%20Face%20Spaces-blue)](https://huggingface.co/spaces/Vishal462/xvqa)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![PyTorch](https://img.shields.io/badge/PyTorch-2.1%2B-ee4c2c)
-![License](https://img.shields.io/badge/license-MIT-green)
 
 ![X-VQA dashboard](assets/demo_dashboard.jpg)
 
@@ -18,7 +17,7 @@ X-VQA fuses a **Swin Transformer** visual encoder with an **ELECTRA** text encod
 
 ## Why this project
 
-Most VQA models are right for the wrong reasons. Asked *"what color is the fire hydrant?"*, a model trained on a biased corpus answers from the statistics of its training set rather than from the pixels — and it gives the same answer whatever the image shows. This is the Clever Hans failure mode, and standard accuracy metrics are blind to it.
+Most VQA models are right for the wrong reasons. Asked *"what color is the fire hydrant?"*, a model trained on a biased corpus answers from the statistics of its training set rather than from the pixels and it gives the same answer whatever the image shows. This is the Clever Hans failure mode, and standard accuracy metrics are blind to it.
 
 ![Language bias vs visual grounding](assets/fig1-2_language_bias.jpg)
 
@@ -48,7 +47,7 @@ Trained on the GQA balanced split (943K questions, ~72K images) for 5 epochs on 
   <img src="assets/fig6-1b_val_accuracy.png" width="48%" alt="Validation accuracy per epoch">
 </p>
 
-Two-phase training: the fusion layers stabilize against frozen encoders for 3 epochs (+5.25 pp), then everything unfreezes with differential learning rates (+2.33 pp). The dashed line marks the phase transition — no accuracy drop across it, which is what gradient clipping at 1.0 plus cosine warmup bought. Accuracy was still climbing at epoch 5.
+Two-phase training: the fusion layers stabilize against frozen encoders for 3 epochs (+5.25 pp), then everything unfreezes with differential learning rates (+2.33 pp). The dashed line marks the phase transition, no accuracy drop across it, which is what gradient clipping at 1.0 plus cosine warmup bought. Accuracy was still climbing at epoch 5.
 
 ### Bias evaluation (GQA-OOD)
 
@@ -62,7 +61,7 @@ Two-phase training: the fusion layers stabilize against frozen encoders for 3 ep
   <img src="assets/fig6-2_head_vs_tail.png" width="55%" alt="Head vs Tail accuracy">
 </p>
 
-The 19.59 pp gap is the honest finding: X-VQA has learned real statistical associations, as every model trained on a finite corpus does. But Tail accuracy of 39.76% on a **1,833-way** classification problem — where chance is ~0.05% — means the model is genuinely reasoning over visual evidence on a large fraction of rare concept pairings, not defaulting to frequency priors.
+The 19.59 pp gap is the honest finding: X-VQA has learned real statistical associations, as every model trained on a finite corpus does. But Tail accuracy of 39.76% on a **1,833-way** classification problem where chance is ~0.05%, this means the model is genuinely reasoning over visual evidence on a large fraction of rare concept pairings, not defaulting to frequency priors.
 
 ### Visual grounding
 
@@ -71,7 +70,7 @@ The 19.59 pp gap is the honest finding: X-VQA has learned real statistical assoc
   <img src="assets/fig6-3b_scorecam.jpg" width="42%" alt="Score-CAM heatmap">
 </p>
 
-*"Is there a red chair in the room?"* → **no**. A language-biased model that had learned to associate "red chair" questions with "yes" would answer incorrectly here. The correct answer requires actually looking and finding neither a room nor a chair — and the heatmap shows attention concentrated on the zebra and surrounding grass, which is the evidence that produced the "no".
+*"Is there a red chair in the room?"* → **no**. A language-biased model that had learned to associate "red chair" questions with "yes" would answer incorrectly here. The correct answer requires actually looking and finding neither a room nor a chair. The heatmap shows attention concentrated on the zebra and surrounding grass, which is the evidence that produced the "no".
 
 ### Against published baselines
 
@@ -83,7 +82,7 @@ The 19.59 pp gap is the honest finding: X-VQA has learned real statistical assoc
 | Oscar | ~61% | Faster R-CNN | 6.5M image-text pairs | None |
 | **X-VQA (this work)** | **55.32%** | Swin-Base | **None** (ImageNet + text only) | **Score-CAM** |
 
-X-VQA lands ~5 pp below the large-scale pretraining models while using **zero** vision-language pretraining pairs — and it is the only model in the comparison that emits a spatial explanation for every prediction.
+X-VQA lands ~5 pp below the large-scale pretraining models while using **zero** vision-language pretraining pairs and it is the only model in the comparison that emits a spatial explanation for every prediction.
 
 ---
 
@@ -107,7 +106,7 @@ X-VQA lands ~5 pp below the large-scale pretraining models while using **zero** 
   <img src="assets/fig4-2_mcan_layer.jpg" width="70%" alt="MCAN layer internals">
 </p>
 
-Each layer runs **bidirectional** cross-attention — text queries image, image queries text, 8 heads each — followed by per-modality FFNs (512→2048→512), all with residual connections and LayerNorm. Six stacked layers let each modality progressively refine its representation against the other. After the stack, both streams are mean-pooled and concatenated into a 1024-d joint vector for classification.
+Each layer runs **bidirectional** cross-attention, text queries image, image queries text, 8 heads each followed by per-modality FFNs (512→2048→512), all with residual connections and LayerNorm. Six stacked layers let each modality progressively refine its representation against the other. After the stack, both streams are mean-pooled and concatenated into a 1024-d joint vector for classification.
 
 ### Making Score-CAM work on a multimodal transformer
 
@@ -118,7 +117,7 @@ Each layer runs **bidirectional** cross-attention — text queries image, image 
 Score-CAM assumes a single-input, CNN-shaped model. Three adaptations were required:
 
 - **Two inputs.** `XVQACamWrapper` freezes the tokenized question and exposes only `pixel_values` as the variable input, so Score-CAM's masking mechanism has a single tensor to perturb.
-- **Dynamic batch expansion.** Score-CAM pushes up to 64 masked copies of the image through the model per call. The wrapper expands `input_ids` and `attention_mask` to `pixel_values.shape[0]` on every forward pass — this is what prevents a shape mismatch inside the MCAN attention layers.
+- **Dynamic batch expansion.** Score-CAM pushes up to 64 masked copies of the image through the model per call. The wrapper expands `input_ids` and `attention_mask` to `pixel_values.shape[0]` on every forward pass preventing a shape mismatch inside the MCAN attention layers.
 - **Token → spatial reshape.** Swin emits `[batch, 49, 1024]` sequences, not feature maps. `swin_reshape_transform` folds the 49-token sequence into a 7×7 grid and transposes to `[batch, 1024, 7, 7]`, which Score-CAM upsamples to 224×224 for overlay.
 
 Hooks are registered on `model.vision_encoder.encoder.layers[-1].blocks[-1].layernorm_before`.
@@ -144,7 +143,7 @@ Phase 2 differential learning rates: **5e-6** for the Swin and ELECTRA encoders 
 ## Quickstart
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/xvqa-explainable-vqa.git
+git clone https://github.com/Vishal462/xvqa-explainable-vqa.git
 cd xvqa-explainable-vqa
 
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
@@ -196,7 +195,7 @@ External data required (not in this repo):
 - **Residual language bias.** The 19.59 pp Head–Tail gap is real. Debiasing objectives (LMH, RUBi) were not applied.
 - **Under-trained.** Validation accuracy was still rising at epoch 5; the run was stopped on compute budget, not convergence.
 - **Score-CAM cost.** 64 forward passes per explanation makes it impractical for real-time or batch use.
-- **Explanations are visual only.** The heatmap shows *where*, not *why* — there is no textual rationale.
+- **Explanations are visual only.** The heatmap shows *where*, not *why*. It lacks textual rationale.
 
 ## Future work
 
@@ -213,10 +212,5 @@ Extend training past 5 epochs; add an explicit debiasing loss and re-measure the
 5. Yu et al. *Deep Modular Co-Attention Networks for Visual Question Answering.* CVPR 2019.
 6. Wang et al. *Score-CAM: Score-Weighted Visual Explanations for Convolutional Neural Networks.* CVPRW 2020.
 
-## License
-
-MIT — see [LICENSE](LICENSE). GQA and GQA-OOD carry their own licenses; the pretrained backbones follow their respective Hugging Face model card terms.
-
----
 
 Built by **Vishal Agarwal** · Full write-up in [`docs/XVQA_Project_Report.pdf`](docs/XVQA_Project_Report.pdf)
