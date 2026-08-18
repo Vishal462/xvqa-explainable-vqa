@@ -2,7 +2,7 @@
 
 Answering free-form questions about images, and showing *where in the image* the answer came from.
 
-X-VQA fuses a **Swin Transformer** visual encoder with an **ELECTRA** text encoder through a **6-layer bidirectional cross-attention network (MCAN)**, and attaches **Score-CAM** to the final Swin block so every prediction generated along with a spatial Score-CAM attribution map. It is evaluated on **GQA-OOD** to quantify how much of its accuracy is genuine visual reasoning versus language-prior guessing.
+X-VQA fuses a **Swin Transformer** visual encoder with an **ELECTRA** text encoder through a **6-layer bidirectional cross-attention network (MCAN)**, and attaches **Score-CAM** to the final Swin block so every prediction is accompanied by a spatial Score-CAM attribution map. It is evaluated on GQA-OOD to examine performance under distribution shifts designed to reduce reliance on language priors.
 
 [![Live Demo](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://visual-question-answering-explainable.streamlit.app/)
 
@@ -154,7 +154,7 @@ streamlit run app.py
 
 Opens at `http://localhost:8501`. Upload an image, type a question, get an answer with confidence and a Score-CAM heatmap.
 
-> **On CPU:** inference takes a few seconds, but Score-CAM needs 64 forward passes through a 276M-parameter model and takes 1–3 minutes.
+**On CPU:** inference takes a few seconds, but Score-CAM evaluates up to 64 masked versions of the image and can take 1–3 minutes.
 
 ### Reproducing training
 
@@ -193,7 +193,7 @@ External data required (not in this repo):
 - **Closed vocabulary.** Answers are restricted to the 1,833 classes seen in GQA training. Out-of-vocabulary answers are unreachable by construction.
 - **Residual language bias.** The 19.59 pp Head–Tail gap is real. Debiasing objectives (LMH, RUBi) were not applied.
 - **Under-trained.** Validation accuracy was still rising at epoch 5; the run was stopped on compute budget, not convergence.
-- **Score-CAM cost.** 64 forward passes per explanation makes it impractical for real-time or batch use.
+- **Score-CAM cost.** Up to 64 masked image evaluations per explanation makes it impractical for real-time or batch use.
 - **Explanations are visual only.** The heatmap shows *where*, not *why*. It lacks textual rationale.
 
 ## Future work
