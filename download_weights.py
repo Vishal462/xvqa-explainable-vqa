@@ -11,13 +11,9 @@ import os
 import sys
 import urllib.request
 
-# ---------------------------------------------------------------------------
-# EDIT THIS after you create the GitHub Release (see SETUP.md, step 5).
-# Format: https://github.com/<user>/<repo>/releases/download/<tag>/best_model.pth
-# ---------------------------------------------------------------------------
 WEIGHTS_URL = os.environ.get(
     "XVQA_WEIGHTS_URL",
-    "https://github.com/YOUR_USERNAME/xvqa-explainable-vqa/releases/download/v1.0/best_model.pth",
+    "https://github.com/Vishal462/xvqa-explainable-vqa/releases/download/v1.0/best_model.pth",
 )
 DEFAULT_DEST = "best_model.pth"
 
@@ -35,11 +31,6 @@ def download(dest: str = DEFAULT_DEST, url: str = WEIGHTS_URL) -> str:
     if os.path.exists(dest):
         print(f"{dest} already present — skipping download.")
         return dest
-    if "YOUR_USERNAME" in url:
-        raise RuntimeError(
-            "WEIGHTS_URL has not been configured. Edit download_weights.py "
-            "(or set the XVQA_WEIGHTS_URL env var) to point at your release asset."
-        )
     print(f"Downloading checkpoint from {url}")
     tmp = dest + ".part"
     urllib.request.urlretrieve(url, tmp, reporthook=_progress)
