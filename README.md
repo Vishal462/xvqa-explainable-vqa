@@ -5,7 +5,7 @@ Answering free-form questions about images, and showing *where in the image* the
 X-VQA fuses a **Swin Transformer** visual encoder with an **ELECTRA** text encoder through a **6-layer bidirectional cross-attention network (MCAN)**, and attaches **Score-CAM** to the final Swin block so every prediction ships with a spatial attribution map. It is evaluated on **GQA-OOD** to quantify how much of its accuracy is genuine visual reasoning versus language-prior guessing.
 
 <!-- Replace with your deployed URL once the Space is live -->
-[![Open in Spaces](https://img.shields.io/badge/demo-Hugging%20Face%20Spaces-blue)](https://huggingface.co/spaces/Vishal462/xvqa)
+[![Open in Spaces](https://img.shields.io/badge/demo)](https://visual-question-answering-explainable.streamlit.app/)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![PyTorch](https://img.shields.io/badge/PyTorch-2.1%2B-ee4c2c)
 
