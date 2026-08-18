@@ -9,7 +9,7 @@ Score-CAM usable on a two-input transformer model.
 
 import torch
 import torch.nn as nn
-from transformers import SwinModel, ElectraModel
+from transformers import SwinModel, ElectraModel, SwinConfig, ElectraConfig
 
 class MCANLayer(nn.Module):
     def __init__(self, hidden_dim, num_heads=8):
